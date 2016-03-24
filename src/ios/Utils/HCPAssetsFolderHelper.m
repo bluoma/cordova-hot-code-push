@@ -35,8 +35,8 @@
     });
 }
 
-#pragma mark Private API
 
+//expose this. BL
 + (HCPAssetsFolderHelper *)sharedInstance {
     static HCPAssetsFolderHelper *sharedInstance = nil;
     static dispatch_once_t onceToken;
@@ -46,6 +46,40 @@
     
     return sharedInstance;
 }
+
+//blocks. for startup. BL
+- (NSError*)installWwwFolderToExternalStorageFolderSync:(NSURL *)externalFolderURL {
+    NSLog(@"%s in", __PRETTY_FUNCTION__);
+    self.isWorking = YES;
+    NSError *error = nil;
+    NSFileManager *fileManager = [NSFileManager defaultManager];
+    BOOL isWWwFolderExists = [fileManager fileExistsAtPath:externalFolderURL.path];
+    
+    // remove previous version of the www folder
+    if (isWWwFolderExists) {
+        [fileManager removeItemAtURL:[externalFolderURL URLByDeletingLastPathComponent] error:&error];
+    }
+    
+    // create new www folder
+    if (![fileManager createDirectoryAtURL:[externalFolderURL URLByDeletingLastPathComponent] withIntermediateDirectories:YES attributes:nil error:&error]) {
+        //[self dispatchErrorEvent:error];
+        NSLog(@"%s out err: %@", __PRETTY_FUNCTION__, error);
+        
+        return error;
+    }
+    
+    // copy www folder from bundle to cache folder
+    NSURL *localWww = [NSURL fileURLWithPath:[NSBundle pathToWwwFolder] isDirectory:YES];
+    [fileManager copyItemAtURL:localWww toURL:externalFolderURL error:&error];
+    
+    self.isWorking = NO;
+    NSLog(@"%s out", __PRETTY_FUNCTION__);
+    
+    return error;
+}
+
+
+#pragma mark Private API
 
 - (void)__installWwwFolderToExternalStorageFolder:(NSURL *)externalFolderURL {
     NSError *error = nil;

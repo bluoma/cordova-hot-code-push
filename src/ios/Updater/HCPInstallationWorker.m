@@ -13,6 +13,7 @@
 #import "NSError+HCPExtension.h"
 #import "NSData+HCPMD5.h"
 #import "HCPEvents.h"
+#import "HCPPluginInternalPreferences.h"
 
 @interface HCPInstallationWorker() {
     HCPFilesStructure *_newReleaseFS;
@@ -41,6 +42,8 @@
     if (self) {
         _newReleaseFS = [[HCPFilesStructure alloc] initWithReleaseVersion:newVersion];
         _currentReleaseFS = [[HCPFilesStructure alloc] initWithReleaseVersion:currentVersion];
+        NSLog(@"%s new: %@", __PRETTY_FUNCTION__, _newReleaseFS.wwwFolder.path);
+        NSLog(@"%s current: %@", __PRETTY_FUNCTION__, _currentReleaseFS.wwwFolder.path);
     }
     
     return self;
@@ -85,8 +88,12 @@
  *  Send event that update was successfully installed
  */
 - (void)dispatchSuccessEvent {
+    //NSNotification *notification = [HCPEvents notificationWithName:kHCPUpdateIsInstalledEvent //BL
+    //                                             applicationConfig:_newConfig  //BL
+    //                                                        taskId:self.workerId]; //BL
+    
     NSNotification *notification = [HCPEvents notificationWithName:kHCPUpdateIsInstalledEvent
-                                                 applicationConfig:_newConfig
+                                                 applicationConfig:_oldConfig  //always load from same folder. BL
                                                             taskId:self.workerId];
     
     
@@ -259,6 +266,20 @@
         }
     }
     
+    //blow away current. BL
+    if (![_fileManager removeItemAtURL:_currentReleaseFS.wwwFolder error:error]) {
+        errorMsg = [NSString stringWithFormat:@"Failed to remove current www folder: %@. Installation failed: %@",
+                    _currentReleaseFS.wwwFolder.path, [(*error) underlyingErrorLocalizedDesription]];
+    }
+    
+    // copy new files into current www folder. BL
+    if (![_fileManager copyItemAtURL:_newReleaseFS.wwwFolder toURL:_currentReleaseFS.wwwFolder error:error]) {
+        errorMsg = [NSString stringWithFormat:@"Failed to copy new files %@ into current www folder: %@. Installation failed.",
+                    _currentReleaseFS.wwwFolder.path, [(*error) underlyingErrorLocalizedDesription]];
+        
+    }
+
+    
     if (errorMsg) {
         *error = [NSError errorWithCode:kHCPFailedToCopyNewContentFilesErrorCode description:errorMsg];
     }
@@ -266,12 +287,19 @@
     return (*error == nil);
 }
 
+
 /**
  *  Save loaded configs to the www folder. They are now our current configs.
  */
 - (void)saveNewConfigsToWwwFolder {
-    [_manifestStorage store:_newManifest inFolder:_newReleaseFS.wwwFolder];
-    [_configStorage store:_newConfig inFolder:_newReleaseFS.wwwFolder];
+    //[_manifestStorage store:_newManifest inFolder:_newReleaseFS.wwwFolder];  //BL
+    //[_configStorage store:_newConfig inFolder:_newReleaseFS.wwwFolder]; //BL
+    
+    //use same folder for wkwebview issue #85. Probably better not use the date from chcp.json as a folder name since it's a lie now. BL
+    [_manifestStorage store:_newManifest inFolder:_currentReleaseFS.wwwFolder];
+    [_configStorage store:_newConfig inFolder:_currentReleaseFS.wwwFolder];
+
+    
 }
 
 /**
@@ -286,6 +314,7 @@
  */
 - (void)cleanUpOnSucess {
     [_fileManager removeItemAtURL:_newReleaseFS.downloadFolder error:nil];
+
 }
 
 @end

@@ -19,4 +19,9 @@
  */
 + (void)installWwwFolderToExternalStorageFolder:(NSURL *)externalFolderURL;
 
++ (HCPAssetsFolderHelper *)sharedInstance;
+
+- (NSError*)installWwwFolderToExternalStorageFolderSync:(NSURL *)externalFolderURL;
+
+
 @end

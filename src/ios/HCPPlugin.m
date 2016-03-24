@@ -52,7 +52,8 @@ static NSString *const DEFAULT_STARTING_PAGE = @"index.html";
     
     // install www folder if it is needed
     if ([self isWWwFolderNeedsToBeInstalled]) {
-        [self installWwwFolder];
+        //[self installWwwFolder]; //BL
+        [self installWwwFolderSync]; //blocks on startup. BL
         return;
     }
     
@@ -107,6 +108,51 @@ static NSString *const DEFAULT_STARTING_PAGE = @"index.html";
     
     [HCPAssetsFolderHelper installWwwFolderToExternalStorageFolder:_filesStructure.wwwFolder];
 }
+
+//this blocks. for startup in wkwebview, BL
+- (void)installWwwFolderSync {
+    
+    NSLog(@"%s in", __PRETTY_FUNCTION__);
+    
+    _isPluginReadyForWork = NO;
+    
+    // reset www folder installed flag
+    if (_pluginInternalPrefs.isWwwFolderInstalled) {
+        _pluginInternalPrefs.wwwFolderInstalled = NO;
+        [_pluginInternalPrefs saveToUserDefaults];
+    }
+    
+    HCPAssetsFolderHelper *helperInstance = [HCPAssetsFolderHelper sharedInstance];
+    NSError *error = [helperInstance installWwwFolderToExternalStorageFolderSync:_filesStructure.wwwFolder];
+    
+    if (error) {
+        NSLog(@"%s error installing www to external storage: %@", __PRETTY_FUNCTION__, error);
+    }
+    else {
+        
+        // update stored config with new application build version
+        _pluginInternalPrefs.appBuildVersion = [NSBundle applicationBuildVersion];
+        _pluginInternalPrefs.wwwFolderInstalled = YES;
+        [_pluginInternalPrefs saveToUserDefaults];
+        
+        [self resetIndexPageToExternalStorage];
+
+        // fetch update
+        [self loadApplicationConfig];
+        
+        if (_pluginXmlConfig.isUpdatesAutoDownloadAllowed &&
+            ![HCPUpdateLoader sharedInstance].isDownloadInProgress &&
+            ![HCPUpdateInstaller sharedInstance].isInstallationInProgress) {
+            [self _fetchUpdate:nil];
+        }
+    }
+    
+    // allow work
+    _isPluginReadyForWork = YES;
+    
+    NSLog(@"%s out", __PRETTY_FUNCTION__);
+}
+
 
 /**
  *  Load application config from file system
@@ -199,6 +245,7 @@ static NSString *const DEFAULT_STARTING_PAGE = @"index.html";
     NSString *newVersion = _pluginInternalPrefs.readyForInstallationReleaseVersionName;
     NSString *currentVersion = _pluginInternalPrefs.currentReleaseVersionName;
     
+    NSLog(@"%s newVersion: %@, currentVersion: %@", __PRETTY_FUNCTION__, newVersion, currentVersion);
     NSError *error = nil;
     [[HCPUpdateInstaller sharedInstance] installVersion:newVersion currentVersion:currentVersion error:&error];
     if (error) {
@@ -264,6 +311,7 @@ static NSString *const DEFAULT_STARTING_PAGE = @"index.html";
     
     // rewrite starting page www folder path: should load from external storage
     if ([self.viewController isKindOfClass:[CDVViewController class]]) {
+        NSLog(@"%s _filesStructure.wwwFolder.absoluteString: %@", __PRETTY_FUNCTION__, _filesStructure.wwwFolder.absoluteString);
         ((CDVViewController *)self.viewController).wwwFolderName = _filesStructure.wwwFolder.absoluteString;
     } else {
         NSLog(@"HotCodePushError: Can't make starting page to be from external storage. Main controller should be of type CDVViewController.");
@@ -572,11 +620,11 @@ static NSString *const DEFAULT_STARTING_PAGE = @"index.html";
  *  @param notification captured notification with the event details
  */
 - (void)onUpdateInstalledEvent:(NSNotification *)notification {
-    _appConfig = notification.userInfo[kHCPEventUserInfoApplicationConfigKey];
+    _appConfig = notification.userInfo[kHCPEventUserInfoApplicationConfigKey]; //this is just the current config passed by HCPInstallationWorker. BL
     
     _pluginInternalPrefs.readyForInstallationReleaseVersionName = @"";
     _pluginInternalPrefs.previousReleaseVersionName = _pluginInternalPrefs.currentReleaseVersionName;
-    _pluginInternalPrefs.currentReleaseVersionName = _appConfig.contentConfig.releaseVersion;
+    _pluginInternalPrefs.currentReleaseVersionName = _appConfig.contentConfig.releaseVersion; //current and previous now the same. problem? BL
     [_pluginInternalPrefs saveToUserDefaults];
     
     _filesStructure = [[HCPFilesStructure alloc] initWithReleaseVersion:_pluginInternalPrefs.currentReleaseVersionName];
